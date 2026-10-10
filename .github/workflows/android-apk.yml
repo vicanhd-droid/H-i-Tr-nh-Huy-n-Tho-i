@@ -19,34 +19,27 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Extract and Prepare Project
+    - name: Extract ZIP and Build
       run: |
-        echo "Checking repository contents..."
-        ls -la
         if [ -f "game-v1.5-server-files.zip" ]; then
           unzip -q game-v1.5-server-files.zip -d extracted_game
-          echo "Extracted contents:"
-          ls -la extracted_game
         fi
-
-    - name: Build Debug APK
-      run: |
-        if [ -d "extracted_game/app" ]; then
-          cd extracted_game
-          chmod +x gradlew
+        
+        # Tìm xem trong thư mục giải nén có file build nào không, nếu có gradlew thì chạy build
+        find . -name "gradlew" -exec chmod +x {} \;
+        
+        # Thử build ở thư mục gốc hoặc thư mục con tìm được
+        if [ -f "./gradlew" ]; then
           ./gradlew assembleDebug
-        else
-          echo "Looking for gradlew in root..."
-          chmod +x gradlew || true
-          ./gradlew assembleDebug || echo "Build skipped, structure needs adjustment"
+        elif [ -f "./extracted_game/gradlew" ]; then
+          cd extracted_game && ./gradlew assembleDebug
         fi
 
-    - name: Upload APK Artifact
+    - name: Upload Any APK Found
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: |
-          extracted_game/app/build/outputs/apk/debug/app-debug.apk
-          app/build/outputs/apk/debug/app-debug.apk
-        if-no-files-found: ignore
+          **/build/outputs/apk/debug/*.apk
+        if-no-files-found: warn
         
