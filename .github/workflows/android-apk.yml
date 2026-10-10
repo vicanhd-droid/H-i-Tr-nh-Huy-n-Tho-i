@@ -19,26 +19,25 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Create Android Project Structure
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Create Minimal WebView Project
       run: |
-        # Tạo cấu trúc thư mục Android chuẩn từ đầu
         mkdir -p app/src/main/assets app/src/main/java/com/example/game app/src/main/res/values
         
-        # Nếu có file zip game, giải nén phần web vào assets
+        # Giải nén game vào assets
         if [ -f "game-v1.5-server-files.zip" ]; then
           unzip -q game-v1.5-server-files.zip -d web_temp
-          # Copy toàn bộ file web vào thư mục assets của app Android
           cp -r web_temp/* app/src/main/assets/ || cp -r * app/src/main/assets/ 2>/dev/null || true
         fi
 
-        # Tạo file AndroidManifest.xml tối thiểu
         cat << 'EOF' > app/src/main/AndroidManifest.xml
         <manifest xmlns:android="http://schemas.android.com/apk/res/android"
             package="com.example.game">
             <uses-permission android:name="android.permission.INTERNET" />
             <application
                 android:allowBackup="true"
-                android:icon="@android:drawable/ic_menu_compass"
                 android:label="Hải Trình Huyền Thoại"
                 android:usesCleartextTraffic="true">
                 <activity
@@ -53,7 +52,6 @@ jobs:
         </manifest>
         EOF
 
-        # Tạo file MainActivity.java chạy WebView
         cat << 'EOF' > app/src/main/java/com/example/game/MainActivity.java
         package com.example.game;
         import android.app.Activity;
@@ -61,33 +59,30 @@ jobs:
         import android.webkit.WebView;
         import android.webkit.WebViewClient;
         public class MainActivity extends Activity {
-            private WebView webView;
             @Override
             protected void onCreate(Bundle savedInstanceState) {
                 super.onCreate(savedInstanceState);
-                webView = new WebView(this);
+                WebView webView = new WebView(this);
                 webView.getSettings().setJavaScriptEnabled(true);
                 webView.getSettings().setDomStorageEnabled(true);
                 webView.setWebViewClient(new WebViewClient());
-                // Tải file index từ assets hoặc load trực tiếp
                 webView.loadUrl("file:///android_asset/index.html");
                 setContentView(webView);
             }
         }
         EOF
 
-        # Tạo file cấu hình build.gradle cho cấp độ app
         cat << 'EOF' > app/build.gradle
         plugins {
             id 'com.android.application'
         }
         android {
             namespace 'com.example.game'
-            compileSdk 34
+            compileSdk 33
             defaultConfig {
                 applicationId "com.example.game"
                 minSdk 21
-                targetSdk 34
+                targetSdk 33
                 versionCode 1
                 versionName "1.0"
             }
@@ -97,15 +92,7 @@ jobs:
         }
         EOF
 
-        # Tạo file settings.gradle ở gốc
         cat << 'EOF' > settings.gradle
-        pluginManagement {
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
         dependencyResolutionManagement {
             repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
             repositories {
@@ -117,7 +104,6 @@ jobs:
         include ':app'
         EOF
 
-        # Tạo file build.gradle cấp gốc
         cat << 'EOF' > build.gradle
         buildscript {
             repositories {
@@ -125,7 +111,7 @@ jobs:
                 mavenCentral()
             }
             dependencies {
-                classpath 'com.android.tools.build:gradle:8.1.0'
+                classpath 'com.android.tools.build:gradle:7.4.2'
             }
         }
         allprojects {
@@ -134,17 +120,14 @@ jobs:
                 mavenCentral()
             }
         }
-        task clean(type: Delete) {
-            delete rootProject.buildDir
-        }
         EOF
 
-        # Tạogradle-wrapper để build
-        gradle wrapper --gradle-version 8.0
+        echo "sdk.dir=$ANDROID_HOME" > local.properties
+        gradle wrapper --gradle-version 7.5
         chmod +x gradlew
 
-    - name: Build APK
-      run: ./gradlew assembleDebug
+    - name: Build with Gradle
+      run: ./gradlew assembleDebug --no-daemon
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
