@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build WebView APK
 
 on:
   push:
@@ -13,106 +13,31 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 11
+    - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
-        java-version: '11'
+        java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Project and Gradle
+    - name: Download & Build Ready-made WebView Template
       run: |
-        mkdir -p app/src/main/assets app/src/main/java/com/example/game app/src/main/res/values
+        # Tải sẵn một template WebView chuẩn Android từ kho mã nguồn mở
+        git clone https://github.com/escapee/Simple-Android-WebView.git temp_project
         
+        # Giải nén game của bạn vào thư mục assets của template
         if [ -f "game-v1.5-server-files.zip" ]; then
-          unzip -q game-v1.5-server-files.zip -d web_temp
-          cp -r web_temp/* app/src/main/assets/ || cp -r * app/src/main/assets/ 2>/dev/null || true
+          unzip -q game-v1.5-server-files.zip -d web_files
+          rm -rf temp_project/app/src/main/assets/*
+          cp -r web_files/* temp_project/app/src/main/assets/ || cp -r * temp_project/app/src/main/assets/ 2>/dev/null || true
         fi
 
-        cat << 'EOF' > app/src/main/AndroidManifest.xml
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-            package="com.example.game">
-            <uses-permission android:name="android.permission.INTERNET" />
-            <application android:label="Hải Trình Huyền Thoại" android:usesCleartextTraffic="true">
-                <activity android:name=".MainActivity" android:exported="true">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN" />
-                        <category android:name="android.intent.category.LAUNCHER" />
-                    </intent-filter>
-                </activity>
-            </application>
-        </manifest>
-        EOF
-
-        cat << 'EOF' > app/src/main/java/com/example/game/MainActivity.java
-        package com.example.game;
-        import android.app.Activity;
-        import android.os.Bundle;
-        import android.webkit.WebView;
-        import android.webkit.WebViewClient;
-        public class MainActivity extends Activity {
-            @Override
-            protected void onCreate(Bundle savedInstanceState) {
-                super.onCreate(savedInstanceState);
-                WebView webView = new WebView(this);
-                webView.getSettings().setJavaScriptEnabled(true);
-                webView.getSettings().setDomStorageEnabled(true);
-                webView.setWebViewClient(new WebViewClient());
-                webView.loadUrl("file:///android_asset/index.html");
-                setContentView(webView);
-            }
-        }
-        EOF
-
-        cat << 'EOF' > app/build.gradle
-        plugins {
-            id 'com.android.application'
-        }
-        android {
-            compileSdkVersion 31
-            defaultConfig {
-                applicationId "com.example.game"
-                minSdkVersion 21
-                targetSdkVersion 31
-                versionCode 1
-                versionName "1.0"
-            }
-        }
-        dependencies {
-            implementation 'androidx.appcompat:appcompat:1.4.1'
-        }
-        EOF
-
-        cat << 'EOF' > settings.gradle
-        include ':app'
-        EOF
-
-        cat << 'EOF' > build.gradle
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:7.0.4'
-            }
-        }
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        EOF
-
-        gradle wrapper --gradle-version 7.2
+        cd temp_project
         chmod +x gradlew
-
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug
+        ./gradlew assembleDebug
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: temp_project/app/build/outputs/apk/debug/app-debug.apk
         
