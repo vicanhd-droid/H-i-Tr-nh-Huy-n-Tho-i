@@ -1,4 +1,4 @@
-name: Build Android WebView APK
+name: Build Direct APK
 
 on:
   push:
@@ -22,27 +22,24 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Create Minimal WebView Project
+    - name: Compile and Package APK Manually
       run: |
-        mkdir -p app/src/main/assets app/src/main/java/com/example/game app/src/main/res/values
+        mkdir -p build_apk/assets build_apk/gen build_apk/obj build_apk/apk_out
         
         # Giải nén game vào assets
         if [ -f "game-v1.5-server-files.zip" ]; then
-          unzip -q game-v1.5-server-files.zip -d web_temp
-          cp -r web_temp/* app/src/main/assets/ || cp -r * app/src/main/assets/ 2>/dev/null || true
+          unzip -q game-v1.5-server-files.zip -d build_apk/assets
         fi
 
-        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        # Tạo AndroidManifest.xml
+        cat << 'EOF' > build_apk/AndroidManifest.xml
         <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-            package="com.example.game">
+            package="com.example.game"
+            android:versionCode="1"
+            android:versionName="1.0">
             <uses-permission android:name="android.permission.INTERNET" />
-            <application
-                android:allowBackup="true"
-                android:label="Hải Trình Huyền Thoại"
-                android:usesCleartextTraffic="true">
-                <activity
-                    android:name=".MainActivity"
-                    android:exported="true">
+            <application android:label="Hải Trình Huyền Thoại" android:usesCleartextTraffic="true">
+                <activity android:name=".MainActivity" android:exported="true">
                     <intent-filter>
                         <action android:name="android.intent.action.MAIN" />
                         <category android:name="android.intent.category.LAUNCHER" />
@@ -52,7 +49,8 @@ jobs:
         </manifest>
         EOF
 
-        cat << 'EOF' > app/src/main/java/com/example/game/MainActivity.java
+        # Tạo MainActivity.java
+        cat << 'EOF' > build_apk/MainActivity.java
         package com.example.game;
         import android.app.Activity;
         import android.os.Bundle;
@@ -72,66 +70,30 @@ jobs:
         }
         EOF
 
-        cat << 'EOF' > app/build.gradle
-        plugins {
-            id 'com.android.application'
-        }
-        android {
-            namespace 'com.example.game'
-            compileSdk 33
-            defaultConfig {
-                applicationId "com.example.game"
-                minSdk 21
-                targetSdk 33
-                versionCode 1
-                versionName "1.0"
-            }
-        }
-        dependencies {
-            implementation 'androidx.appcompat:appcompat:1.6.1'
-        }
-        EOF
+        cd build_apk
+        
+        # Biên dịch Java sang DEX
+        javac -source 1.7 -target 1.7 -bootclasspath $ANDROID_HOME/platforms/android-33/android.jar MainActivity.java -d obj/
+        $ANDROID_HOME/build-tools/33.0.2/dx --dex --output=classes.dex obj/
 
-        cat << 'EOF' > settings.gradle
-        dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        rootProject.name = "GameWebView"
-        include ':app'
-        EOF
+        # Đóng gói tài nguyên và assets bằng aapt
+        $ANDROID_HOME/build-tools/33.0.2/aapt package -f -M AndroidManifest.xml -A assets -I $ANDROID_HOME/platforms/android-33/android.jar -F unsigned.apk
+        
+        # Thêm file classes.dex vào APK
+        $ANDROID_HOME/build-tools/33.0.2/aapt add unsigned.apk classes.dex
 
-        cat << 'EOF' > build.gradle
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:7.4.2'
-            }
-        }
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        EOF
-
-        echo "sdk.dir=$ANDROID_HOME" > local.properties
-        gradle wrapper --gradle-version 7.5
-        chmod +x gradlew
-
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug --no-daemon
+        # Ký APK để cài đặt được trên điện thoại
+        jarsigner -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey unsigned.apk androiddebugkey || true
+        
+        # Nếu jarsigner chưa có keystore, tạo mới:
+        keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug, O=Android, C=US" 2>/dev/null || true
+        jarsigner -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey unsigned.apk androiddebugkey
+        
+        cp unsigned.apk final-game.apk
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: build_apk/final-game.apk
         
