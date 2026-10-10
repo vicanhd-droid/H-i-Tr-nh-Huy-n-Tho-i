@@ -1,3 +1,14 @@
-plugins {
-    id 'com.android.application' version '8.6.1' apply false
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.vicanhdan.haitrinhhuyenthoai'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.vicanhdan.haitrinhhuyenthoai'
+        minSdk 23
+        targetSdk 28
+        versionCode 1
+        versionName '1.5-test'
+    }
 }
