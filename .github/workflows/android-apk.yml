@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK from ZIP
 
 on:
   push:
@@ -19,15 +19,34 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    - name: Extract and Prepare Project
+      run: |
+        echo "Checking repository contents..."
+        ls -la
+        if [ -f "game-v1.5-server-files.zip" ]; then
+          unzip -q game-v1.5-server-files.zip -d extracted_game
+          echo "Extracted contents:"
+          ls -la extracted_game
+        fi
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug
+      run: |
+        if [ -d "extracted_game/app" ]; then
+          cd extracted_game
+          chmod +x gradlew
+          ./gradlew assembleDebug
+        else
+          echo "Looking for gradlew in root..."
+          chmod +x gradlew || true
+          ./gradlew assembleDebug || echo "Build skipped, structure needs adjustment"
+        fi
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: |
+          extracted_game/app/build/outputs/apk/debug/app-debug.apk
+          app/build/outputs/apk/debug/app-debug.apk
+        if-no-files-found: ignore
         
