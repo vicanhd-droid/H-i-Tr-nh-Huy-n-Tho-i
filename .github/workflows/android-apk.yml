@@ -1,4 +1,4 @@
-name: Build Android APK from ZIP
+name: Build Android WebView APK
 
 on:
   push:
@@ -19,27 +19,136 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Extract ZIP and Build
+    - name: Create Android Project Structure
       run: |
+        # Tạo cấu trúc thư mục Android chuẩn từ đầu
+        mkdir -p app/src/main/assets app/src/main/java/com/example/game app/src/main/res/values
+        
+        # Nếu có file zip game, giải nén phần web vào assets
         if [ -f "game-v1.5-server-files.zip" ]; then
-          unzip -q game-v1.5-server-files.zip -d extracted_game
-        fi
-        
-        # Tìm xem trong thư mục giải nén có file build nào không, nếu có gradlew thì chạy build
-        find . -name "gradlew" -exec chmod +x {} \;
-        
-        # Thử build ở thư mục gốc hoặc thư mục con tìm được
-        if [ -f "./gradlew" ]; then
-          ./gradlew assembleDebug
-        elif [ -f "./extracted_game/gradlew" ]; then
-          cd extracted_game && ./gradlew assembleDebug
+          unzip -q game-v1.5-server-files.zip -d web_temp
+          # Copy toàn bộ file web vào thư mục assets của app Android
+          cp -r web_temp/* app/src/main/assets/ || cp -r * app/src/main/assets/ 2>/dev/null || true
         fi
 
-    - name: Upload Any APK Found
+        # Tạo file AndroidManifest.xml tối thiểu
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.example.game">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <application
+                android:allowBackup="true"
+                android:icon="@android:drawable/ic_menu_compass"
+                android:label="Hải Trình Huyền Thoại"
+                android:usesCleartextTraffic="true">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+
+        # Tạo file MainActivity.java chạy WebView
+        cat << 'EOF' > app/src/main/java/com/example/game/MainActivity.java
+        package com.example.game;
+        import android.app.Activity;
+        import android.os.Bundle;
+        import android.webkit.WebView;
+        import android.webkit.WebViewClient;
+        public class MainActivity extends Activity {
+            private WebView webView;
+            @Override
+            protected void onCreate(Bundle savedInstanceState) {
+                super.onCreate(savedInstanceState);
+                webView = new WebView(this);
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.getSettings().setDomStorageEnabled(true);
+                webView.setWebViewClient(new WebViewClient());
+                // Tải file index từ assets hoặc load trực tiếp
+                webView.loadUrl("file:///android_asset/index.html");
+                setContentView(webView);
+            }
+        }
+        EOF
+
+        # Tạo file cấu hình build.gradle cho cấp độ app
+        cat << 'EOF' > app/build.gradle
+        plugins {
+            id 'com.android.application'
+        }
+        android {
+            namespace 'com.example.game'
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.example.game"
+                minSdk 21
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+        }
+        dependencies {
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+        }
+        EOF
+
+        # Tạo file settings.gradle ở gốc
+        cat << 'EOF' > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "GameWebView"
+        include ':app'
+        EOF
+
+        # Tạo file build.gradle cấp gốc
+        cat << 'EOF' > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.1.0'
+            }
+        }
+        allprojects {
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        task clean(type: Delete) {
+            delete rootProject.buildDir
+        }
+        EOF
+
+        # Tạogradle-wrapper để build
+        gradle wrapper --gradle-version 8.0
+        chmod +x gradlew
+
+    - name: Build APK
+      run: ./gradlew assembleDebug
+
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: |
-          **/build/outputs/apk/debug/*.apk
-        if-no-files-found: warn
+        path: app/build/outputs/apk/debug/app-debug.apk
         
